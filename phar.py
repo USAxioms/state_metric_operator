@@ -16,7 +16,7 @@ from anthropic import Anthropic
 MODEL = "claude-sonnet-4-5"
 
 client = Anthropic(
-    api_key=os.getenv("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")
+    
 )
 
 # Configure logging
