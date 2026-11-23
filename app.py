@@ -9,9 +9,10 @@ Run:
     python3 app.py
 
 Environment variables:
-    PORT    HTTP port (default: 8000)
-    HOST    Bind address (default: 0.0.0.0 on Render, 127.0.0.1 locally)
+    PORT  HTTP port (default: 8000)
+    HOST  Bind address (default: 0.0.0.0 on Render, 127.0.0.1 locally)
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -23,6 +24,7 @@ import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 HERE = Path(__file__).resolve().parent
 if str(HERE) not in sys.path:
@@ -33,7 +35,8 @@ import phar  # noqa: E402
 logging.getLogger().setLevel(logging.WARNING)
 
 MAX_BODY_BYTES = 2_000_000
-STATIC_INDEX = HERE / "static" / "index.html"
+STATIC_DIR = HERE / "static"
+STATIC_INDEX = STATIC_DIR / "index.html"
 
 DEFAULT_CONSTRAINTS: dict[str, Any] = {
     "safety_priority": "highest",
@@ -42,7 +45,10 @@ DEFAULT_CONSTRAINTS: dict[str, Any] = {
 }
 
 
-def build_target_from_prompt(prompt: str, uploaded_target: dict[str, Any] | None) -> phar.TherapeuticTarget:
+def build_target_from_prompt(
+    prompt: str,
+    uploaded_target: dict[str, Any] | None,
+) -> phar.TherapeuticTarget:
     """Build a target context directly from any prompt or JSON target without rejecting domains."""
     data = uploaded_target if isinstance(uploaded_target, dict) else {}
     cleaned_prompt = " ".join((prompt or "").strip().split())
@@ -136,12 +142,14 @@ def run_chat_turn(request_data: dict[str, Any]) -> dict[str, Any]:
             if isinstance(msg, dict) and msg.get("role") == "user" and isinstance(msg.get("content"), str):
                 prompt = msg["content"]
                 break
+
     if not prompt and isinstance(request_data.get("message"), str):
         prompt = request_data["message"]
     if not prompt and isinstance(request_data.get("prompt"), str):
         prompt = request_data["prompt"]
 
     uploaded_target = request_data.get("target") if isinstance(request_data.get("target"), dict) else None
+
     constraints = {**DEFAULT_CONSTRAINTS}
     if isinstance(request_data.get("constraints"), dict):
         constraints.update(request_data["constraints"])
@@ -150,8 +158,8 @@ def run_chat_turn(request_data: dict[str, Any]) -> dict[str, Any]:
     engine = phar.PharmaceuticalSuperintelligence()
     candidate = engine.discover_drug_candidate(target, constraints)
     pathway = list(engine.reasoning_pathways.values())[-1]
-    reply_text = format_natural_language_response(prompt, target, candidate, pathway, engine)
 
+    reply_text = format_natural_language_response(prompt, target, candidate, pathway, engine)
     ledger_export = engine.export_ledger_json()
     canonical_bytes = json.dumps(ledger_export, sort_keys=True, default=str).encode("utf-8")
     digest = hashlib.sha256(canonical_bytes).hexdigest()
@@ -196,22 +204,26 @@ class LedgerHandler(BaseHTTPRequestHandler):
         self.wfile.write(html_bytes)
 
     def do_GET(self) -> None:
-        if self.path in ("/", "/index.html"):
+        request_path = urlparse(self.path).path
+
+        if request_path in ("/", "/index.html"):
             if STATIC_INDEX.is_file():
                 self._send_html(200, STATIC_INDEX.read_bytes())
             else:
                 self._send_json(404, {"ok": False, "error": "static/index.html not found"})
-        elif self.path == "/api/status":
+        elif request_path == "/api/status":
             self._send_json(200, {
                 "ok": True,
                 "engine": "phar.PharmaceuticalSuperintelligence",
                 "axioms_loaded": len(phar.PharmaceuticalAxiomRegistry.get_foundational_axioms()),
+                "static_index_present": STATIC_INDEX.is_file(),
             })
         else:
             self._send_json(404, {"ok": False, "error": "Not found"})
 
     def do_POST(self) -> None:
-        if self.path != "/api/chat":
+        request_path = urlparse(self.path).path
+        if request_path != "/api/chat":
             self._send_json(404, {"ok": False, "error": "Not found"})
             return
 
