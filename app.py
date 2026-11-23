@@ -4,15 +4,11 @@ Pharmaceutical Cognitive State Ledger — Chat Application Backend
 Application layer only. phar.py is imported and left unchanged.
 
 Execution path:
-    HTTP/UI -> pharmaceutical MDM + R3 workflow -> Λ Total optimization
+    HTTP/UI -> pharmaceutical MDM + R³ workflow -> Λ Total optimization
              -> Cognitive State Ledger export -> SHA-256 response
 
-Run:
-    python3 app.py
-
-Environment:
-    PORT  HTTP port (default: 8000)
-    HOST  Bind address (default: 0.0.0.0 on Render, 127.0.0.1 locally)
+This application currently exposes a pharmaceutical workflow, not a
+general-purpose scientific or conversational reasoning engine.
 """
 
 from __future__ import annotations
@@ -33,6 +29,7 @@ HERE = Path(__file__).resolve().parent
 if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
+
 def _load_phar_module() -> types.ModuleType:
     """Load phar.py without editing it; tolerate a Markdown code-fence wrapper."""
     source_path = HERE / "phar.py"
@@ -42,7 +39,9 @@ def _load_phar_module() -> types.ModuleType:
         start = source.find("```python") + len("```python")
         end = source.rfind("```")
         if end <= start:
-            raise ImportError("phar.py has an opening Python fence but no closing fence")
+            raise ImportError(
+                "phar.py has an opening Python fence but no closing fence"
+            )
         source = source[start:end]
 
     module = types.ModuleType("phar")
@@ -53,7 +52,7 @@ def _load_phar_module() -> types.ModuleType:
     return module
 
 
-phar = _load_phar_module()  # noqa: E402
+phar = _load_phar_module()
 
 logging.getLogger().setLevel(logging.WARNING)
 
@@ -66,6 +65,63 @@ DEFAULT_CONSTRAINTS: dict[str, Any] = {
     "cost_target": 1000,
     "synthesis_green_chemistry": True,
 }
+
+# Explicit indicators that a request belongs to the pharmaceutical workflow.
+# General science, chemistry, biology, energy, and materials questions do not
+# qualify merely because they mention a molecule or substance.
+PHARMA_INTENT_TERMS = re.compile(
+    r"\b("
+    r"drug discovery|drug candidate|drug development|pharmaceutical|"
+    r"therapeutic|therapy|treatment|medication|medicine|"
+    r"active pharmaceutical ingredient|api synthesis|"
+    r"drug target|target engagement|"
+    r"pharmacokinetic|pharmacodynamic|adme|"
+    r"dose response|clinical trial|clinical evidence|"
+    r"disease mechanism|disease target|"
+    r"binding affinity|inhibitor|agonist|antagonist|"
+    r"toxicity|therapeutic index|"
+    r"formulation|bioavailability|"
+    r"molecular scaffold|lead compound|"
+    r"compound optimization|"
+    r"indication"
+    r")\b",
+    re.IGNORECASE,
+)
+
+PHARMA_NEGATION = re.compile(
+    r"\b(?:do not|don't|dont|not|never|without|exclude|avoid)\b"
+    r".{0,80}\b(?:pharmaceutical|pharma|drug discovery|drug-development)\b",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def is_pharmaceutical_request(
+    prompt: str,
+    uploaded_target: dict[str, Any] | None,
+) -> bool:
+    """
+    Route only clearly pharmaceutical requests into phar.py.
+
+    A structured target counts as pharmaceutical only when the caller supplies
+    an explicit disease/indication or a non-generic target class. A plain
+    substance name or general scientific question is not enough.
+    """
+    data = uploaded_target if isinstance(uploaded_target, dict) else {}
+
+    explicit_disease = bool(
+        isinstance(data.get("disease"), str) and data["disease"].strip()
+    )
+    explicit_class = str(data.get("target_class") or "").strip().lower()
+    explicit_pharma_class = explicit_class not in ("", "general_domain", "general")
+
+    if explicit_disease or explicit_pharma_class:
+        return True
+
+    cleaned = " ".join((prompt or "").strip().split())
+    if not cleaned or PHARMA_NEGATION.search(cleaned):
+        return False
+
+    return bool(PHARMA_INTENT_TERMS.search(cleaned))
 
 
 def build_target_from_prompt(
@@ -109,18 +165,16 @@ def _build_invention_state(
     """Translate the actual pharmaceutical output into Λ Total's input schema."""
     safety_ok = all(step.safety_validated for step in pathway.steps)
     return {
-        # phar.py does not expose a separately validated mechanism-extraction
-        # result. Leave this empty so its Λ Total implementation uses its
-        # documented baseline U_Sub instead of treating prose labels as mechanisms.
         "novel_mechanisms": [],
         "novelty_score": float(candidate.novelty_score),
-        "novelty_level": "breakthrough" if candidate.novelty_score >= 0.80 else "significant",
+        "novelty_level": (
+            "breakthrough" if candidate.novelty_score >= 0.80 else "significant"
+        ),
         "ethical_validation": {
             "ethical_score": 0.95 if safety_ok else 0.50,
             "patient_safety_primacy": safety_ok,
-            "equitable_access": float(candidate.development_cost_estimate) <= float(
-                constraints.get("cost_target", 1000)
-            ),
+            "equitable_access": float(candidate.development_cost_estimate)
+            <= float(constraints.get("cost_target", 1000)),
             "environmental_impact": bool(
                 constraints.get("synthesis_green_chemistry", True)
             ),
@@ -137,7 +191,7 @@ def _build_invention_state(
 
 
 def _serialize_lambda_metrics(metrics: phar.LambdaMetrics) -> dict[str, Any]:
-    """Return the Λ Total metrics and their recorded reflection data as JSON data."""
+    """Return Λ Total metrics and recorded reflection data as JSON data."""
     return {
         "lambda_total": metrics.lambda_total,
         "u_substrate": metrics.u_substrate,
@@ -167,12 +221,12 @@ def format_natural_language_response(
     lambda_engine: phar.LambdaOptimizationEngine,
 ) -> str:
     total_axioms = len(phar.PharmaceuticalAxiomRegistry.get_foundational_axioms())
-    axiom_coverage = (
-        len(pathway.axioms_used) / total_axioms if total_axioms else 0.0
-    )
+    axiom_coverage = len(pathway.axioms_used) / total_axioms if total_axioms else 0.0
     all_steps_safe = all(step.safety_validated for step in pathway.steps)
     criteria_status = (
-        "satisfied" if pharma_engine.superintelligence_verified else "not fully satisfied"
+        "satisfied"
+        if pharma_engine.superintelligence_verified
+        else "not fully satisfied"
     )
 
     lines = [
@@ -217,7 +271,8 @@ def format_natural_language_response(
         f"Predicted efficacy: {candidate.predicted_efficacy * 100:.1f}%",
         f"Predicted safety index: {candidate.predicted_safety_index:.2f}",
         f"Novelty score: {candidate.novelty_score * 100:.1f}%",
-        f"Estimated development cost: USD {candidate.development_cost_estimate:.1f} million.",
+        f"Estimated development cost: USD "
+        f"{candidate.development_cost_estimate:.1f} million.",
         "",
         "VERIFICATION QUALIFICATION",
         f"The pharmaceutical engine's internal criteria currently report: {criteria_status}.",
@@ -257,15 +312,42 @@ def run_chat_turn(request_data: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(uploaded_target, dict):
         uploaded_target = None
 
+    # IMPORTANT: Do not manufacture a TherapeuticTarget from an arbitrary
+    # question. phar.py exposes a pharmaceutical engine, not a general-purpose
+    # science-answering engine. Non-pharmaceutical prompts stop here.
+    if not is_pharmaceutical_request(prompt, uploaded_target):
+        message = (
+            "This application currently exposes its pharmaceutical MDM + R³ "
+            "workflow and Λ Total optimization. Your request was not routed "
+            "through that workflow because it does not clearly specify a "
+            "pharmaceutical or therapeutic task. No TherapeuticTarget, drug "
+            "candidate, efficacy estimate, safety index, or pharmaceutical "
+            "ledger entry was generated. The current phar.py interface does "
+            "not expose a general-purpose scientific answer engine, so this "
+            "app cannot produce the requested general explanation without "
+            "adding a separate general-domain engine."
+        )
+        return {
+            "ok": True,
+            "reply": message,
+            "sha256": None,
+            "summary": {
+                "routed": False,
+                "route": "unsupported_general_domain",
+                "reason": "No pharmaceutical intent detected.",
+            },
+            "ledger": None,
+        }
+
     constraints = dict(DEFAULT_CONSTRAINTS)
     if isinstance(request_data.get("constraints"), dict):
         constraints.update(request_data["constraints"])
 
-    # 1. Construct the target from the request.
+    # 1. Construct a target only after pharmaceutical intent is established.
     target = build_target_from_prompt(prompt, uploaded_target)
 
-    # 2. Run the existing pharmaceutical engine. Its discover method already
-    #    invokes the MDM pathway and its internal R³ refinement cycles.
+    # 2. Run the existing pharmaceutical engine. Its discover method invokes
+    #    the MDM pathway and its internal R³ refinement cycles.
     pharma_engine = phar.PharmaceuticalSuperintelligence()
     candidate = pharma_engine.discover_drug_candidate(target, constraints)
 
@@ -274,7 +356,7 @@ def run_chat_turn(request_data: dict[str, Any]) -> dict[str, Any]:
     pathway = next(reversed(pharma_engine.reasoning_pathways.values()))
 
     # 3. Run the existing Λ Total optimizer against the actual candidate,
-    #    pathway, and target. No changes to phar.py are required.
+    #    pathway, and target. phar.py remains unchanged.
     lambda_engine = phar.LambdaOptimizationEngine()
     invention_state = _build_invention_state(candidate, pathway, constraints)
     lambda_metrics = lambda_engine.execute_refinement_cycle(
@@ -323,6 +405,8 @@ def run_chat_turn(request_data: dict[str, Any]) -> dict[str, Any]:
         "reply": reply_text,
         "sha256": digest,
         "summary": {
+            "routed": True,
+            "route": "pharmaceutical",
             "target_id": target.target_id,
             "target_name": target.target_name,
             "disease": target.disease,
@@ -377,10 +461,14 @@ class LedgerHandler(BaseHTTPRequestHandler):
             self._send_json(200, {
                 "ok": True,
                 "engines": [
-                    "phar.PharmaceuticalSuperintelligence (MDM + R3)",
+                    "phar.PharmaceuticalSuperintelligence (MDM + R³)",
                     "phar.LambdaOptimizationEngine (Λ Total)",
                 ],
-                "axioms_loaded": len(phar.PharmaceuticalAxiomRegistry.get_foundational_axioms()),
+                "routing": "pharmaceutical-intent-gated",
+                "general_domain_engine": False,
+                "axioms_loaded": len(
+                    phar.PharmaceuticalAxiomRegistry.get_foundational_axioms()
+                ),
                 "static_index_present": STATIC_INDEX.is_file(),
             })
             return
@@ -444,7 +532,7 @@ def main() -> None:
     print(f"APP LOCATION: {HERE}", flush=True)
     print(f"STATIC LOCATION: {STATIC_DIR}", flush=True)
     print(f"INDEX FILE EXISTS: {STATIC_INDEX.is_file()}", flush=True)
-    print("ACTIVE EXECUTION: Pharmaceutical MDM + R³, followed by Λ Total", flush=True)
+    print("ACTIVE EXECUTION: pharmaceutical-intent-gated MDM + R³, followed by Λ Total", flush=True)
     print(f"Listening on http://{host}:{port}", flush=True)
     print("=" * 60, flush=True)
     server.serve_forever()
