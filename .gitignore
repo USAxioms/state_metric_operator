@@ -1,0 +1,5 @@
+__pycache__/
+*.py[cod]
+.venv/
+pharmaceutical_cognitive_ledger.txt
+pharmaceutical_cognitive_ledger.json
