@@ -1,0 +1,473 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pharmaceutical Cognitive State Ledger — Chat</title>
+  <style>
+    :root {
+      --bg: #f4f5f7;
+      --surface: #ffffff;
+      --text: #181a1f;
+      --muted: #5c6370;
+      --border: #dcdfe4;
+      --accent: #1f4e78;
+      --accent-hover: #163a5a;
+      --user-bubble: #e8f0f8;
+      --assistant-bubble: #f8f9fb;
+      --error-bg: #fdecec;
+      --error-text: #9b1c1c;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0.9rem 1.25rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+    }
+
+    header h1 {
+      margin: 0;
+      font-size: 1.05rem;
+      font-weight: 600;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    button {
+      font: inherit;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      border-radius: 6px;
+      padding: 0.45rem 0.8rem;
+      cursor: pointer;
+    }
+
+    button:hover:not(:disabled) {
+      background: #eef1f5;
+    }
+
+    button.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #ffffff;
+      font-weight: 500;
+      padding: 0.6rem 1.1rem;
+    }
+
+    button.primary:hover:not(:disabled) {
+      background: var(--accent-hover);
+    }
+
+    button:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
+    #target-panel {
+      display: none;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0.85rem 1.25rem;
+    }
+
+    #target-panel.open {
+      display: block;
+    }
+
+    #target-panel label {
+      display: block;
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin-bottom: 0.4rem;
+    }
+
+    #target-json {
+      width: 100%;
+      min-height: 110px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.85rem;
+      padding: 0.6rem;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      resize: vertical;
+    }
+
+    .panel-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 0.45rem;
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    #chat-thread {
+      flex: 1;
+      overflow-y: auto;
+      padding: 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      max-width: 920px;
+      width: 100%;
+      margin: 0 auto;
+    }
+
+    .message {
+      border-radius: 10px;
+      padding: 0.85rem 1rem;
+      border: 1px solid var(--border);
+      max-width: 100%;
+    }
+
+    .message.user {
+      background: var(--user-bubble);
+      align-self: flex-end;
+      max-width: 80%;
+    }
+
+    .message.assistant {
+      background: var(--assistant-bubble);
+      align-self: stretch;
+    }
+
+    .message.error {
+      background: var(--error-bg);
+      border-color: #f5c2c7;
+      color: var(--error-text);
+    }
+
+    .role-label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+      margin-bottom: 0.35rem;
+    }
+
+    .message.error .role-label {
+      color: var(--error-text);
+    }
+
+    .prose {
+      white-space: pre-wrap;
+      line-height: 1.55;
+      font-size: 0.96rem;
+      word-break: break-word;
+    }
+
+    details.ledger-meta {
+      margin-top: 0.75rem;
+      border-top: 1px solid var(--border);
+      padding-top: 0.55rem;
+      font-size: 0.82rem;
+      color: var(--muted);
+    }
+
+    details.ledger-meta summary {
+      cursor: pointer;
+      user-select: none;
+    }
+
+    details.ledger-meta pre {
+      margin: 0.5rem 0 0;
+      padding: 0.65rem;
+      background: #f1f3f6;
+      border-radius: 6px;
+      overflow-x: auto;
+      font-size: 0.78rem;
+      color: var(--text);
+    }
+
+    #composer-wrap {
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      padding: 0.85rem 1.25rem;
+    }
+
+    #composer {
+      max-width: 920px;
+      margin: 0 auto;
+      display: flex;
+      gap: 0.6rem;
+      align-items: flex-end;
+    }
+
+    #prompt-input {
+      flex: 1;
+      font: inherit;
+      font-size: 0.96rem;
+      line-height: 1.45;
+      padding: 0.65rem 0.8rem;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      resize: none;
+      min-height: 46px;
+      max-height: 180px;
+    }
+
+    #prompt-input:focus,
+    #target-json:focus {
+      outline: 2px solid color-mix(in srgb, var(--accent) 35%, transparent);
+      border-color: var(--accent);
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Pharmaceutical Cognitive State Ledger</h1>
+    <div class="header-actions">
+      <button type="button" id="toggle-target-btn">Target JSON</button>
+      <button type="button" id="clear-btn">New Chat</button>
+    </div>
+  </header>
+
+  <section id="target-panel" aria-label="Optional JSON Target Override">
+    <label for="target-json">
+      Optional JSON target object sent with your next message (leave blank to infer from natural language):
+    </label>
+    <textarea id="target-json" placeholder='{
+  "target_id": "CUSTOM_001",
+  "target_name": "Example_Target",
+  "disease": "Example Indication",
+  "validation_score": 0.9,
+  "unmet_need_score": 0.95
+}'></textarea>
+    <div class="panel-footer">
+      <span id="target-status">No custom target attached</span>
+      <button type="button" id="clear-target-btn">Clear Target</button>
+    </div>
+  </section>
+
+  <main id="chat-thread" aria-live="polite">
+    <div class="message assistant">
+      <div class="role-label">Ledger</div>
+      <div class="prose">Ask a question in natural language about a therapeutic target or disease indication (for example, TREM2 in Alzheimer's disease or dystrophin in Duchenne muscular dystrophy), or attach a JSON target definition above.</div>
+    </div>
+  </main>
+
+  <div id="composer-wrap">
+    <form id="composer">
+      <textarea
+        id="prompt-input"
+        rows="1"
+        placeholder="Type your message in natural language... (Enter to send, Shift+Enter for new line)"
+        required
+      ></textarea>
+      <button type="submit" class="primary" id="send-btn">Send</button>
+    </form>
+  </div>
+
+  <script>
+    const threadEl = document.getElementById("chat-thread");
+    const formEl = document.getElementById("composer");
+    const inputEl = document.getElementById("prompt-input");
+    const sendBtn = document.getElementById("send-btn");
+    const clearBtn = document.getElementById("clear-btn");
+    const toggleTargetBtn = document.getElementById("toggle-target-btn");
+    const clearTargetBtn = document.getElementById("clear-target-btn");
+    const targetPanelEl = document.getElementById("target-panel");
+    const targetJsonEl = document.getElementById("target-json");
+    const targetStatusEl = document.getElementById("target-status");
+
+    const conversation = [];
+
+    function autoResize(textarea) {
+      textarea.style.height = "auto";
+      textarea.style.height = Math.min(textarea.scrollHeight, 180) + "px";
+    }
+
+    function updateTargetStatus() {
+      const raw = targetJsonEl.value.trim();
+      if (!raw) {
+        targetStatusEl.textContent = "No custom target attached";
+        return null;
+      }
+      try {
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+          targetStatusEl.textContent = "Target must be a JSON object";
+          return null;
+        }
+        targetStatusEl.textContent = "Custom JSON target ready";
+        return parsed;
+      } catch {
+        targetStatusEl.textContent = "Invalid JSON in target box";
+        return null;
+      }
+    }
+
+    function appendMessage(role, text, meta = null, isError = false) {
+      const card = document.createElement("div");
+      card.className = `message ${role}${isError ? " error" : ""}`;
+
+      const label = document.createElement("div");
+      label.className = "role-label";
+      label.textContent = isError ? "Error" : role === "user" ? "You" : "Ledger";
+      card.appendChild(label);
+
+      const body = document.createElement("div");
+      body.className = "prose";
+      body.textContent = text;
+      card.appendChild(body);
+
+      if (meta && (meta.sha256 || meta.summary)) {
+        const details = document.createElement("details");
+        details.className = "ledger-meta";
+
+        const summary = document.createElement("summary");
+        summary.textContent = meta.sha256
+          ? `Ledger record (SHA-256: ${meta.sha256.slice(0, 16)}…)`
+          : "Ledger summary";
+        details.appendChild(summary);
+
+        const pre = document.createElement("pre");
+        pre.textContent = JSON.stringify({ sha256: meta.sha256, summary: meta.summary }, null, 2);
+        details.appendChild(pre);
+
+        card.appendChild(details);
+      }
+
+      threadEl.appendChild(card);
+      threadEl.scrollTop = threadEl.scrollHeight;
+      return card;
+    }
+
+    toggleTargetBtn.addEventListener("click", () => {
+      targetPanelEl.classList.toggle("open");
+      if (targetPanelEl.classList.contains("open")) {
+        targetJsonEl.focus();
+      }
+    });
+
+    clearTargetBtn.addEventListener("click", () => {
+      targetJsonEl.value = "";
+      updateTargetStatus();
+    });
+
+    targetJsonEl.addEventListener("input", updateTargetStatus);
+
+    clearBtn.addEventListener("click", () => {
+      conversation.length = 0;
+      threadEl.innerHTML = "";
+      appendMessage(
+        "assistant",
+        "Started a new conversation. Ask about a target in natural language to run a reasoning pathway."
+      );
+    });
+
+    inputEl.addEventListener("input", () => autoResize(inputEl));
+
+    inputEl.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        formEl.requestSubmit();
+      }
+    });
+
+    formEl.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const text = inputEl.value.trim();
+      if (!text) return;
+
+      let customTarget = null;
+      if (targetJsonEl.value.trim()) {
+        customTarget = updateTargetStatus();
+        if (!customTarget) {
+          appendMessage(
+            "assistant",
+            "Please fix or clear the JSON in the Target JSON panel before sending.",
+            null,
+            true
+          );
+          return;
+        }
+      }
+
+      conversation.push({ role: "user", content: text });
+      appendMessage("user", text);
+
+      inputEl.value = "";
+      autoResize(inputEl);
+      sendBtn.disabled = true;
+
+      const pendingCard = appendMessage("assistant", "Running reasoning pathway and generating response...");
+
+      try {
+        const payload = {
+          message: text,
+          messages: conversation.slice(-20)
+        };
+        if (customTarget) {
+          payload.target = customTarget;
+        }
+
+        const response = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+
+        const data = await response.json();
+        pendingCard.remove();
+
+        if (!response.ok || data.ok === false) {
+          appendMessage(
+            "assistant",
+            data.reply || data.error || `Request failed with status ${response.status}.`,
+            null,
+            true
+          );
+          return;
+        }
+
+        const replyText =
+          typeof data.reply === "string" && data.reply.trim()
+            ? data.reply
+            : JSON.stringify(data, null, 2);
+
+        conversation.push({ role: "assistant", content: replyText });
+        appendMessage("assistant", replyText, {
+          sha256: data.sha256,
+          summary: data.summary
+        });
+      } catch (err) {
+        pendingCard.remove();
+        appendMessage(
+          "assistant",
+          `Unable to reach the server (${err instanceof Error ? err.message : String(err)}).`,
+          null,
+          true
+        );
+      } finally {
+        sendBtn.disabled = false;
+        inputEl.focus();
+      }
+    });
+  </script>
+</body>
+</html>
